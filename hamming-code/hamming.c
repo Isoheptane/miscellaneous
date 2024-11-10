@@ -145,9 +145,10 @@ void print_block(uint64_t x, bool maskout) {
     putchar('\n');
 }
 
-int main() {
-    uint64_t seed = 0x123456789ABCDEF0;
-    
+bool test() {
+    struct timeval rand_time;
+    gettimeofday(&rand_time, NULL);
+    uint64_t seed = rand_time.tv_sec * 1000000 + rand_time.tv_usec;
     // tests
     for (size_t i = 0; i < 10000; i++) {
         uint64_t data = generate_rand(&seed) % (1ull << 57);
@@ -159,7 +160,7 @@ int main() {
             print_binary(data);
             print_binary(unrepo_data);
             printf("%llu: %llu\n", i, data);
-            return 0;
+            return false;
         }
 
         uint64_t err_pos = generate_rand(&seed) % 64;
@@ -175,17 +176,17 @@ int main() {
             printf("%llu\n", (popcnt64(err1_data & masks[3]) & 1));
             printf("%llu\n", (popcnt64(err1_data & masks[4]) & 1));
             printf("%llu\n", (popcnt64(err1_data & masks[5]) & 1));
-            return 0;
+            return false;
         }
 
         if (!decode(&blocked_data)) {
             printf("Decode failed on %llu: %llu\n", i, data);
-            return 0;
+            return false;
         } else if (blocked_data != data) {
             print_binary(data);
             print_binary(blocked_data);
             printf("Decode unmatch on %llu: %llu\n", i, data);
-            return 0;
+            return false;
         }
 
         uint64_t err_pos1 = generate_rand(&seed) % 64;
@@ -198,10 +199,23 @@ int main() {
         uint64_t block_parity = popcnt64(unrecoverable) | 1;
         if (decode(&unrecoverable) != false) {
             printf("Decode success but expeced failed on %llu: %llu\n", i, data);
-            return 0;
+            return false;
         }
     }
-    printf("PASS tests. Preparing performance bench...\n");
+    return true;
+}
+
+int main() {
+    struct timeval rand_time;
+    gettimeofday(&rand_time, NULL);
+    uint64_t seed = rand_time.tv_sec * 1000000 + rand_time.tv_usec;
+
+    if (!test()) {
+        printf("Test failed.\n");
+        return 0;
+    }
+
+    printf("Test PASS. Preparing performance bench...\n");
     uint64_t count = 1 << 24;
     double megabytes = count * 57.0 / 8.0 / 1024.0 / 1024.0;
 
@@ -223,19 +237,32 @@ int main() {
     milis = 1000.0 * (t_end.tv_sec - t_start.tv_sec) + (t_end.tv_usec - t_start.tv_usec) / 1000.0;
     printf("Encode bench run complete. %.3lf MiB in %.3lf ms.\n", megabytes, milis);
 
-    printf("Randomly adding noises...\n");
+    printf("Adding noises on blocks...\n");
     for (uint64_t i = 0; i < count; i++) {
         uint64_t err_pos = generate_rand(&seed) % 64;
         data[i] ^= (1ull << err_pos);
     }
+    uint64_t extra_error_i = generate_rand(&seed) % count;
+    uint64_t extra_error_pos = generate_rand(&seed) % count;
+    printf("Added extra noise on block %llu.\n", extra_error_i);
+    data[extra_error_i] ^= (1ull << extra_error_pos);
 
     printf("Running decode test bench...\n");
     gettimeofday(&t_start, NULL);
-    for (uint64_t i = 0; i < count; i++)
-        decode(&data[i]);
+    for (uint64_t i = 0; i < count; i++) {
+        if (!decode(&data[i])) {
+            printf("Decode failed on %llu block!\n", i);
+            continue;
+        }
+    }
     gettimeofday(&t_end, NULL);
     milis = 1000.0 * (t_end.tv_sec - t_start.tv_sec) + (t_end.tv_usec - t_start.tv_usec) / 1000.0;
     printf("Decode bench run complete. %.3lf MiB in %.3lf ms.\n", megabytes, milis);
+    for (uint64_t i = 0; i < count; i++) {
+        if (original[i] != data[i]) {
+            printf("Data not match on %llu block!\n", i);
+        }
+    }
 
     return 0;
 }
