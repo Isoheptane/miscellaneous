@@ -93,10 +93,10 @@ void clear(SDL_Renderer* renderer) {
 void drawCurve(SDL_Renderer* renderer, const vector<double>& result) {
     size_t N = result.size();
     SDL_SetRenderDrawColor(renderer, 191, 191, 191, SDL_ALPHA_OPAQUE);
-    SDL_RenderDrawLine(renderer, 0, 200, 2048, 200);
+    SDL_RenderDrawLine(renderer, 0, 200, 2248, 200);
     SDL_FPoint* fpoints = new SDL_FPoint[N];
     for (int i = 0; i < N; i++)
-        fpoints[i] = { i * 2.0f, -(float)result[i] + 200.0f };
+        fpoints[i] = { i * 2.0f + 100.0f, -(float)result[i] + 200.0f };
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
     SDL_RenderDrawLinesF(renderer, fpoints, N);
     delete[] fpoints;
@@ -109,35 +109,35 @@ void drawComplex(SDL_Renderer* renderer, const vector<Complex>& result) {
     float max;
 
     SDL_SetRenderDrawColor(renderer, 191, 191, 191, SDL_ALPHA_OPAQUE);
-    SDL_RenderDrawLine(renderer, 0, 500, 2048, 500);
+    SDL_RenderDrawLine(renderer, 0, 500, 2248, 500);
     max = 0.1;
     for (int i = 0; i < N; i++)
         if (abs((float)(result[i].module())) > max)
             max = abs((float)(result[i].module()));
     for (int i = 0; i < N; i++)
-        fpoints[i] = { i * 2.0f, (-(float)(result[i].module()) / max * 200.0f) + 500.0f };
+        fpoints[i] = { i * 4.0f + 100.0f, (-(float)(result[i].module()) / max * 200.0f) + 500.0f };
     SDL_SetRenderDrawColor(renderer, 255, 0, 255, SDL_ALPHA_OPAQUE);
     SDL_RenderDrawLinesF(renderer, fpoints, N);
 
     SDL_SetRenderDrawColor(renderer, 191, 191, 191, SDL_ALPHA_OPAQUE);
-    SDL_RenderDrawLine(renderer, 0, 600, 2048, 600);
+    SDL_RenderDrawLine(renderer, 0, 600, 2248, 600);
     max = 0.1;
     for (int i = 0; i < N; i++)
         if (abs((float)(result[i].real)) > max)
             max = abs((float)(result[i].real));
     for (int i = 0; i < N; i++)
-        fpoints[i] = { i * 2.0f, (-(float)(result[i].real) / max * 50.0f) + 600.0f };
+        fpoints[i] = { i * 4.0f + 100.0f, (-(float)(result[i].real) / max * 50.0f) + 600.0f };
     SDL_SetRenderDrawColor(renderer, 255, 0, 0, SDL_ALPHA_OPAQUE);
     SDL_RenderDrawLinesF(renderer, fpoints, N);
 
     SDL_SetRenderDrawColor(renderer, 191, 191, 191, SDL_ALPHA_OPAQUE);
-    SDL_RenderDrawLine(renderer, 0, 700, 2048, 700);
+    SDL_RenderDrawLine(renderer, 0, 700, 2248, 700);
     max = 0.1;
     for (int i = 0; i < N; i++)
         if (abs((float)(result[i].imag)) > max)
             max = abs((float)(result[i].imag));
     for (int i = 0; i < N; i++)
-        fpoints[i] = { i * 2.0f, (-(float)(result[i].imag) / max * 50.0f) + 700.0f };
+        fpoints[i] = { i * 4.0f + 100.0f, (-(float)(result[i].imag) / max * 50.0f) + 700.0f };
     SDL_SetRenderDrawColor(renderer, 0, 0, 255, SDL_ALPHA_OPAQUE);
     SDL_RenderDrawLinesF(renderer, fpoints, N);
 
@@ -147,14 +147,23 @@ void drawComplex(SDL_Renderer* renderer, const vector<Complex>& result) {
 int main() {
     const size_t SIZE = 1024;
     vector<double> array = vector<double>(SIZE, 0.0);
+    unsigned long long seed = 114514;
     for (int i = 0; i < SIZE; i++) {
-        
-        array[i] += std::sin((double)i * M_PI / 8.00) * 50.0;
-        //array[i] += (double)rand() / (double)RAND_MAX * 8.0f - 4.0f;
-        
+        seed = (seed * 1919ull) + 810ull;
+        array[i] = (seed % 114514) / 114514.0 * 50.0 - 25.0;
     }
-    for (int i = 0; i < SIZE; i++) {
-        // array[i] *= (1.0 - sin(std::abs(i - 512) / 512.0 * M_PI_2));    
+    for (int rounds = 0; rounds < 4; rounds++) {
+        vector<double> new_array = vector<double>(SIZE, 0.0);
+        for (int i = 0; i < SIZE; i++) {
+            if (i >= 1 && i <= (SIZE - 2)) {
+                new_array[i] = (array[i - 1] + array[i] + array[i + 1]) / 3.0;
+            } else {
+                new_array[i] = array[i];
+            }
+        }
+        for (int i = 0; i < SIZE; i++) {
+            array[i] = new_array[i];
+        }
     }
     auto result = fft(array);
     /*
@@ -171,7 +180,7 @@ int main() {
     }
     SDL_Window* window;
     SDL_Renderer* renderer;
-    SDL_CreateWindowAndRenderer(2048, 800, SDL_WINDOW_SHOWN, &window, &renderer);
+    SDL_CreateWindowAndRenderer(2248, 800, SDL_WINDOW_SHOWN, &window, &renderer);
 
     bool running = true;
     while (running) {
