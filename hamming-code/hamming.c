@@ -11,6 +11,7 @@
 */
 
 #define __HARDWARE_POPCNT__
+#define __FAST_MULTIPLE__
 
 #ifdef __HARDWARE_POPCNT__
 //  https://github.com/kimwalisch/libpopcnt/blob/master/libpopcnt.h#L190
@@ -19,6 +20,7 @@ static inline uint64_t popcnt64(uint64_t x) {
     return x;
 }
 #else
+//  https://en.wikipedia.org/wiki/Hamming_weight
 const uint64_t m1  = 0x5555555555555555; //binary: 0101...
 const uint64_t m2  = 0x3333333333333333; //binary: 00110011..
 const uint64_t m4  = 0x0f0f0f0f0f0f0f0f; //binary:  4 zeros,  4 ones ...
@@ -26,6 +28,8 @@ const uint64_t m8  = 0x00ff00ff00ff00ff; //binary:  8 zeros,  8 ones ...
 const uint64_t m16 = 0x0000ffff0000ffff; //binary: 16 zeros, 16 ones ...
 const uint64_t m32 = 0x00000000ffffffff; //binary: 32 zeros, 32 ones
 const uint64_t h01 = 0x0101010101010101; //the sum of 256 to the power of 0,1,2,3...
+
+#ifdef __FAST_MULTIPLE__
 static inline uint64_t popcnt64(uint64_t x)
 {
     x -= (x >> 1) & m1;             //put count of each 2 bits into those 2 bits
@@ -33,6 +37,18 @@ static inline uint64_t popcnt64(uint64_t x)
     x = (x + (x >> 4)) & m4;        //put count of each 8 bits into those 8 bits 
     return (x * h01) >> 56;  //returns left 8 bits of x + (x<<8) + (x<<16) + (x<<24) + ... 
 }
+#else
+uint64_t popcnt64(uint64_t x)
+{
+    x -= (x >> 1) & m1;             //put count of each 2 bits into those 2 bits
+    x = (x & m2) + ((x >> 2) & m2); //put count of each 4 bits into those 4 bits 
+    x = (x + (x >> 4)) & m4;        //put count of each 8 bits into those 8 bits 
+    x += x >>  8;  //put count of each 16 bits into their lowest 8 bits
+    x += x >> 16;  //put count of each 32 bits into their lowest 8 bits
+    x += x >> 32;  //put count of each 64 bits into their lowest 8 bits
+    return x & 0x7f;
+}
+#endif
 #endif
 
 static inline uint64_t generate_rand (uint64_t* state) {
@@ -145,6 +161,7 @@ void print_block(uint64_t x, bool maskout) {
     putchar('\n');
 }
 
+// Codes undert this are all 
 bool test() {
     struct timeval rand_time;
     gettimeofday(&rand_time, NULL);
@@ -206,12 +223,14 @@ bool test() {
 }
 
 int main() {
+    printf("Running tests on random data...\n");
+
     struct timeval rand_time;
     gettimeofday(&rand_time, NULL);
     uint64_t seed = rand_time.tv_sec * 1000000 + rand_time.tv_usec;
 
     if (!test()) {
-        printf("Test failed.\n");
+        printf("Test FAIL.\n");
         return 0;
     }
 
@@ -226,7 +245,7 @@ int main() {
         original[i] = generate_rand(&seed) % (1ull << 57);
     memcpy(data, original, count * sizeof(uint64_t));
 
-    printf("Running encode test bench...\n");
+    printf("Running encode benchmark...\n");
     struct timeval t_start, t_end;
     double milis;
 
@@ -235,7 +254,8 @@ int main() {
         data[i] = encode(data[i]);
     gettimeofday(&t_end, NULL);
     milis = 1000.0 * (t_end.tv_sec - t_start.tv_sec) + (t_end.tv_usec - t_start.tv_usec) / 1000.0;
-    printf("Encode bench run complete. %.3lf MiB in %.3lf ms.\n", megabytes, milis);
+    printf("Encode benchmark run complete. %.3lf MiB in %.3lf ms.\n", megabytes, milis);
+    printf("Encode speed: %.3lf MiB/s\n", 1000.0 * megabytes / milis);
 
     printf("Adding noises on blocks...\n");
     for (uint64_t i = 0; i < count; i++) {
@@ -247,7 +267,7 @@ int main() {
     printf("Added extra noise on block %llu.\n", extra_error_i);
     data[extra_error_i] ^= (1ull << extra_error_pos);
 
-    printf("Running decode test bench...\n");
+    printf("Running decode benchmark...\n");
     gettimeofday(&t_start, NULL);
     for (uint64_t i = 0; i < count; i++) {
         if (!decode(&data[i])) {
@@ -257,12 +277,20 @@ int main() {
     }
     gettimeofday(&t_end, NULL);
     milis = 1000.0 * (t_end.tv_sec - t_start.tv_sec) + (t_end.tv_usec - t_start.tv_usec) / 1000.0;
-    printf("Decode bench run complete. %.3lf MiB in %.3lf ms.\n", megabytes, milis);
+    printf("Decode benchmark run complete. %.3lf MiB in %.3lf ms.\n", megabytes, milis);
+    printf("Decode speed: %.3lf MiB/s\n", 1000.0 * megabytes / milis);
+    printf("Checking results...\n");
     for (uint64_t i = 0; i < count; i++) {
         if (original[i] != data[i]) {
-            printf("Data not match on %llu block!\n", i);
+            if (i == extra_error_i) {
+                printf("Expected data unmatch on %llu block. Continue.\n", i);
+            } else {
+                printf("Unexpected data not match on %llu block!\n", i);
+            }
         }
     }
+
+    printf("Benchmark completed.\n");
 
     return 0;
 }
